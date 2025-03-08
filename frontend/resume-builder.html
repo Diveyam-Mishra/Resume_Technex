@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Conversational Resume Builder</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Arial, sans-serif;
+        }
+
+        body {
+            background: #f5f7fa;
+            color: #333;
+            line-height: 1.6;
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .container {
+            display: flex;
+            width: 100%;
+            max-width: 1400px;
+            margin: 0 auto;
+            gap: 20px;
+            padding: 20px;
+        }
+
+        .chat-section {
+            flex: 1;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .chat-header {
+            padding: 15px;
+            background: #2c3e50;
+            color: white;
+            text-align: center;
+            font-size: 1.2em;
+            font-weight: 600;
+        }
+
+        .chat-messages {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            background: #fafafa;
+        }
+
+        .message {
+            margin-bottom: 15px;
+            padding: 10px 15px;
+            border-radius: 10px;
+            max-width: 80%;
+        }
+
+        .bot-message {
+            background: #3498db;
+            color: white;
+            margin-right: auto;
+        }
+
+        .user-message {
+            background: #ecf0f1;
+            color: #333;
+            margin-left: auto;
+        }
+
+        .chat-input {
+            padding: 15px;
+            border-top: 1px solid #eee;
+            display: flex;
+            gap: 10px;
+        }
+
+        #message-input {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 20px;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+
+        #message-input:focus {
+            border-color: #3498db;
+        }
+
+        #send-btn {
+            padding: 10px 20px;
+            background: #3498db;
+            color: white;
+            border: none;
+            border-radius: 20px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        #send-btn:hover {
+            background: #2980b9;
+        }
+
+        .preview-section {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .template-selector {
+            background: white;
+            padding: 15px;
+            border-radius: 15px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        .template-selector select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 1em;
+        }
+
+        .resume-preview {
+            flex: 1;
+            background: white;
+            padding: 20px;
+            border-radius: 15px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            overflow-y: auto;
+        }
+
+        /* Template Styles */
+        .resume-template {
+            padding: 20px;
+            border: 1px solid #eee;
+            border-radius: 10px;
+        }
+
+        .modern-template {
+            background: #fff;
+            border: 1px solid #3498db;
+        }
+
+        .modern-template h1 {
+            color: #2c3e50;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 5px;
+        }
+
+        .modern-template h3 {
+            color: #3498db;
+            margin: 15px 0 5px;
+        }
+
+        .classic-template {
+            background: #f8f8f8;
+            border: 1px solid #ccc;
+        }
+
+        .classic-template h1 {
+            color: #333;
+            text-align: center;
+            font-size: 1.8em;
+            margin-bottom: 20px;
+        }
+
+        .classic-template h3 {
+            color: #555;
+            text-transform: uppercase;
+            font-size: 1.1em;
+            margin: 10px 0 5px;
+        }
+
+        .creative-template {
+            background: #eef2f7;
+            border: 1px dashed #e74c3c;
+        }
+
+        .creative-template h1 {
+            color: #e74c3c;
+            font-style: italic;
+            text-align: right;
+            margin-bottom: 20px;
+        }
+
+        .creative-template h3 {
+            color: #e74c3c;
+            font-weight: 500;
+            margin: 15px 0 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="chat-section">
+            <div class="chat-header">Resume Builder Assistant</div>
+            <div class="chat-messages" id="chat-messages">
+                <div class="message bot-message">Hello! Let's build your resume. What's your full name?</div>
+            </div>
+            <div class="chat-input">
+                <input type="text" id="message-input" placeholder="Type your message...">
+                <button id="send-btn">Send</button>
+            </div>
+        </div>
+        <div class="preview-section">
+            <div class="template-selector">
+                <label for="template-select">Choose a Template:</label>
+                <select id="template-select">
+                    <option value="modern">Modern</option>
+                    <option value="classic">Classic</option>
+                    <option value="creative">Creative</option>
+                </select>
+            </div>
+            <div class="resume-preview">
+                <div class="resume-template modern-template" id="resume-template">
+                    <h1 id="resume-name">[Your Name]</h1>
+                    <div id="resume-content">
+                        <h3>Experience</h3>
+                        <p id="resume-experience">[Your experience will appear here]</p>
+                        <h3>Education</h3>
+                        <p id="resume-education">[Your education will appear here]</p>
+                        <h3>Skills</h3>
+                        <p id="resume-skills">[Your skills will appear here]</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const chatMessages = document.getElementById('chat-messages');
+        const messageInput = document.getElementById('message-input');
+        const sendBtn = document.getElementById('send-btn');
+        const resumeName = document.getElementById('resume-name');
+        const resumeExperience = document.getElementById('resume-experience');
+        const resumeEducation = document.getElementById('resume-education');
+        const resumeSkills = document.getElementById('resume-skills');
+        const templateSelect = document.getElementById('template-select');
+        const resumeTemplate = document.getElementById('resume-template');
+
+        let step = 1;
+        const resumeData = {
+            name: '',
+            experience: '',
+            education: '',
+            skills: ''
+        };
+
+        function addMessage(content, isUser = false) {
+            const messageDiv = document.createElement('div');
+            messageDiv.classList.add('message');
+            messageDiv.classList.add(isUser ? 'user-message' : 'bot-message');
+            messageDiv.textContent = content;
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        function updateResume() {
+            resumeName.textContent = resumeData.name || '[Your Name]';
+            resumeExperience.textContent = resumeData.experience || '[Your experience will appear here]';
+            resumeEducation.textContent = resumeData.education || '[Your education will appear here]';
+            resumeSkills.textContent = resumeData.skills || '[Your skills will appear here]';
+        }
+
+        function handleUserInput() {
+            const userInput = messageInput.value.trim();
+            if (!userInput) return;
+
+            addMessage(userInput, true);
+            messageInput.value = '';
+
+            switch (step) {
+                case 1:
+                    resumeData.name = userInput;
+                    addMessage("Great! Now, tell me about your work experience.");
+                    step++;
+                    break;
+                case 2:
+                    resumeData.experience = userInput;
+                    addMessage("Perfect. What about your education?");
+                    step++;
+                    break;
+                case 3:
+                    resumeData.education = userInput;
+                    addMessage("Lastly, what are your key skills?");
+                    step++;
+                    break;
+                case 4:
+                    resumeData.skills = userInput;
+                    addMessage("Awesome! Your resume is ready. Feel free to add more details if you'd like.");
+                    step++;
+                    break;
+                default:
+                    addMessage("Thanks for the info! Your resume is being updated.");
+            }
+
+            updateResume();
+        }
+
+        sendBtn.addEventListener('click', handleUserInput);
+        messageInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') handleUserInput();
+        });
+
+        templateSelect.addEventListener('change', (e) => {
+            const template = e.target.value;
+            resumeTemplate.className = 'resume-template'; // Reset class
+            resumeTemplate.classList.add(`${template}-template`);
+        });
+
+        // Placeholder for Grammarly API Integration
+        function integrateGrammarly() {
+            // Note: Grammarly does not provide a public API for direct integration as of now.
+            // This is a placeholder for where Grammarly API logic would go if available.
+            // For demonstration, we'll simulate word suggestion functionality.
+            messageInput.addEventListener('input', () => {
+                const text = messageInput.value;
+                // Simulated Grammarly-like suggestion
+                if (text.length > 5) {
+                    console.log(`Suggestion: Consider replacing '${text}' with a more concise term.`);
+                    // In a real scenario, this would call Grammarly API for suggestions
+                }
+            });
+        }
+
+        integrateGrammarly();
+    </script>
+</body>
+</html>
