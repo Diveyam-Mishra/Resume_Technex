@@ -1,5 +1,5 @@
 from typing import List, Literal, Optional
-from pydantic import BaseModel, EmailStr, Field, validator
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from datetime import datetime
 import re
 import uuid
@@ -53,7 +53,7 @@ class UpdateUserRequest(BaseModel):
     picture: Optional[str] = None
     locale: Optional[str] = None
     
-    @validator('username')
+    @field_validator('username')
     def username_alphanumeric(cls, v):
         if v is not None and not re.match(r'^[a-zA-Z0-9_-]+$', v):
             raise ValueError('Username must be alphanumeric with only underscores and hyphens allowed')

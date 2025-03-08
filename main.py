@@ -2,12 +2,10 @@ import logging
 import time
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.openapi.docs import get_swagger_ui_html
-from fastapi.staticfiles import StaticFiles
-
+import os
 from app.config.settings import settings
 from app.database.db import init_db
-from app.api import auth, user, resume, storage, health, feature, contributors, translation
+from app.api import auth, user, resume, health, feature, contributors
 
 
 # Configure logging
@@ -17,13 +15,14 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Initialize FastAPI app
+# Initialize FastAPI app with standard docs enabled
 app = FastAPI(
     title="Reactive Resume",
     description="Reactive Resume is a free and open source resume builder that's built to make the mundane tasks of creating, updating and sharing your resume as easy as 1, 2, 3.",
     version="4.0.0",
-    docs_url=None,
-    redoc_url=None,
+    # Enable standard docs instead of custom
+    docs_url="/docs",
+    redoc_url="/redoc",
 )
 
 # Add CORS middleware
@@ -52,24 +51,42 @@ async def add_process_time_header(request: Request, call_next):
 app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
 app.include_router(user.router, prefix="/api/user", tags=["User"])
 app.include_router(resume.router, prefix="/api/resume", tags=["Resume"])
-app.include_router(storage.router, prefix="/api/storage", tags=["Storage"])
 app.include_router(health.router, prefix="/api/health", tags=["Health"])
 app.include_router(feature.router, prefix="/api/feature", tags=["Feature"])
 app.include_router(contributors.router, prefix="/api/contributors", tags=["Contributors"])
-app.include_router(translation.router, prefix="/api/translation", tags=["Translation"])
 
-# Custom OpenAPI documentation
-@app.get("/api/docs", include_in_schema=False)
-async def get_documentation():
-    return get_swagger_ui_html(
-        openapi_url="/api/openapi.json",
-        title="Reactive Resume API",
-        swagger_favicon_url="",
-    )
+# Add a root endpoint for quick testing
+@app.get("/", tags=["Root"])
+async def root():
+    return {"message": "Welcome to Reactive Resume API - Visit /docs for API documentation"}
 
-# Serve static files
-app.mount("/artboard", StaticFiles(directory="static/artboard"), name="artboard")
-app.mount("/", StaticFiles(directory="static/client"), name="client")
+# Create necessary directories before mounting static files
+directories = [
+    "static/artboard",
+    "static/client",
+    settings.LOCAL_STORAGE_PATH  # This comes from your settings
+]
+
+# Ensure all directories exist
+for directory in directories:
+    if not os.path.exists(directory):
+        os.makedirs(directory, exist_ok=True)
+
+# Only mount static directories if they exist and have content
+from fastapi.staticfiles import StaticFiles
+
+# Mount storage path only if it exists
+storage_path = settings.LOCAL_STORAGE_PATH
+if os.path.exists(storage_path):
+    app.mount("/storage", StaticFiles(directory=storage_path), name="storage")
+
+# Mount artboard static files
+if os.path.exists("static/artboard") and os.listdir("static/artboard"):
+    app.mount("/artboard", StaticFiles(directory="static/artboard"), name="artboard")
+
+# Mount client static files - mount this last to avoid path conflicts
+if os.path.exists("static/client") and os.listdir("static/client"):
+    app.mount("/static", StaticFiles(directory="static/client"), name="client")
 
 # Startup event to initialize database
 @app.on_event("startup")

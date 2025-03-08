@@ -1,5 +1,5 @@
 from typing import List, Literal, Optional, Union
-from pydantic import BaseModel, EmailStr, Field, validator
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from datetime import datetime
 import re
 
@@ -17,14 +17,16 @@ class RegisterRequest(BaseModel):
     username: str
     password: str
     locale: str = "en-US"
+    class Config:
+        from_attributes = True
     
-    @validator('username')
+    @field_validator('username')
     def username_alphanumeric(cls, v):
         if not re.match(r'^[a-zA-Z0-9_-]+$', v):
             raise ValueError('Username must be alphanumeric with only underscores and hyphens allowed')
         return v
     
-    @validator('password')
+    @field_validator('password')
     def password_min_length(cls, v):
         if len(v) < 8:
             raise ValueError('Password must be at least 8 characters long')
@@ -32,7 +34,7 @@ class RegisterRequest(BaseModel):
 
 
 class LoginRequest(BaseModel):
-    identifier: str  # Can be email or username
+    identifier: str
     password: str
 
 
@@ -40,7 +42,7 @@ class UpdatePasswordRequest(BaseModel):
     currentPassword: str
     newPassword: str
     
-    @validator('newPassword')
+    @field_validator('newPassword')
     def password_min_length(cls, v):
         if len(v) < 8:
             raise ValueError('Password must be at least 8 characters long')
@@ -54,8 +56,9 @@ class ForgotPasswordRequest(BaseModel):
 class ResetPasswordRequest(BaseModel):
     token: str
     password: str
-    
-    @validator('password')
+    class Config:
+        from_attributes = True
+    @field_validator('password')
     def password_min_length(cls, v):
         if len(v) < 8:
             raise ValueError('Password must be at least 8 characters long')
@@ -76,8 +79,7 @@ class TokenResponse(BaseModel):
 
 
 class AuthResponse(BaseModel):
-    status: Literal["authenticated", "2fa_required"]
-    user: User
+    status: str
 
 
 class MessageResponse(BaseModel):

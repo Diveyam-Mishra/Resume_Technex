@@ -56,7 +56,7 @@ async def check_browser() -> Dict[str, Any]:
     """
     try:
         # Try to connect to the browser
-        import requests
+        import requests # type: ignore
         response = requests.get(
             f"{settings.CHROME_URL}/json/version", 
             timeout=5

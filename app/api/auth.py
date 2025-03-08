@@ -91,18 +91,19 @@ async def register(
     
     # Generate tokens
     tokens = create_auth_tokens(user.id)
-    
+    print(0)
     # Set tokens in cookies
-    response.set_cookie(**get_cookie_settings("access"), value=tokens["access_token"])
-    response.set_cookie(**get_cookie_settings("refresh"), value=tokens["refresh_token"])
     
+    response.set_cookie(**get_cookie_settings("access"), value=tokens["access_token"])
+    print(0)
+    response.set_cookie(**get_cookie_settings("refresh"), value=tokens["refresh_token"])
+    print(0)
     # Save refresh token in database
     set_refresh_token(db, user.email, tokens["refresh_token"])
-    
+    print(0)
     # Return user with authentication status
     return {
-        "status": "authenticated",
-        "user": UserSchema.from_orm(user)
+        "status": "authenticated" 
     }
 
 

@@ -1,5 +1,5 @@
 from typing import Dict, List, Literal, Optional, Union, Any
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 from datetime import datetime
 import uuid
 import re
@@ -10,7 +10,7 @@ class CreateResumeRequest(BaseModel):
     slug: Optional[str] = None
     visibility: Literal["public", "private"] = "private"
     
-    @validator('slug')
+    @field_validator('slug')
     def validate_slug(cls, v, values):
         if v is None:
             # Auto-generate slug from title if not provided
@@ -86,7 +86,7 @@ class UpdateResumeRequest(BaseModel):
     visibility: Optional[Literal["public", "private"]] = None
     data: Optional[ResumeData] = None
     
-    @validator('slug')
+    @field_validator('slug')
     def validate_slug(cls, v):
         if v is not None and not re.match(r'^[a-z0-9-]+$', v):
             raise ValueError('Slug must contain only lowercase alphanumeric characters and hyphens')

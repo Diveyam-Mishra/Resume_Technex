@@ -1,33 +1,99 @@
-"""
-Error message constants to be used across the application.
-"""
-from enum import Enum
+import uuid
+import enum
+from datetime import datetime
+from typing import List, Optional
+
+from sqlalchemy import Boolean, Column, DateTime, Enum, ForeignKey, Integer, String, Text, JSON
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import relationship
+
+from app.database.db import Base
 
 
-class ErrorMessage(str, Enum):
-    # Auth related errors
-    INVALID_CREDENTIALS = "The email or password you entered is incorrect."
-    INVALID_REFRESH_TOKEN = "The refresh token is invalid or expired."
-    INVALID_RESET_TOKEN = "The password reset token is invalid or expired."
-    INVALID_VERIFICATION_TOKEN = "The email verification token is invalid or expired."
-    INVALID_TWO_FACTOR_CODE = "The two-factor authentication code is invalid."
-    INVALID_TWO_FACTOR_BACKUP_CODE = "The two-factor backup code is invalid."
-    OAUTH_USER = "This account was created using a third-party provider. Please sign in using that provider."
-    EMAIL_ALREADY_VERIFIED = "Your email has already been verified."
-    TWO_FACTOR_ALREADY_ENABLED = "Two-factor authentication is already enabled on your account."
-    TWO_FACTOR_NOT_ENABLED = "Two-factor authentication is not enabled on your account."
-    
-    # User related errors
-    USER_ALREADY_EXISTS = "A user with this email or username already exists."
-    USER_NOT_FOUND = "The user with the specified ID was not found."
-    SECRETS_NOT_FOUND = "The user's secrets were not found."
-    
-    # Resume related errors
-    RESUME_NOT_FOUND = "The resume with the specified ID was not found."
-    RESUME_SLUG_ALREADY_EXISTS = "A resume with this slug already exists."
-    RESUME_LOCKED = "This resume is currently locked and cannot be edited."
-    RESUME_PRINTER_ERROR = "An error occurred while generating the resume PDF."
-    
-    # Infrastructure related errors
-    INVALID_BROWSER_CONNECTION = "Could not connect to the browser for PDF generation."
-    SOMETHING_WENT_WRONG = "Something went wrong. Please try again later."
+class Provider(str, enum.Enum):
+    EMAIL = "email"
+    GITHUB = "github"
+    GOOGLE = "google"
+    OPENID = "openid"
+
+
+class Visibility(str, enum.Enum):
+    PUBLIC = "public"
+    PRIVATE = "private"
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String, nullable=False)
+    email = Column(String, unique=True, nullable=False, index=True)
+    username = Column(String, unique=True, nullable=False, index=True)
+    locale = Column(String, nullable=False, default="en-US")
+    picture = Column(String, nullable=True)
+    provider = Column(Enum(Provider), nullable=False, default=Provider.EMAIL)
+    emailVerified = Column(Boolean, nullable=False, default=False)
+    twoFactorEnabled = Column(Boolean, nullable=False, default=False)
+    createdAt = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updatedAt = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    secrets = relationship("Secrets", back_populates="user", uselist=False, cascade="all, delete-orphan")
+    resumes = relationship("Resume", back_populates="user", cascade="all, delete-orphan")
+
+
+class Secrets(Base):
+    __tablename__ = "secrets"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    userId = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False)
+    password = Column(String, nullable=True)
+    resetToken = Column(String, nullable=True, unique=True, index=True)
+    verificationToken = Column(String, nullable=True)
+    twoFactorSecret = Column(String, nullable=True)
+    twoFactorBackupCodes = Column(JSON, nullable=False, default=list)
+    refreshToken = Column(String, nullable=True)
+    lastSignedIn = Column(DateTime, nullable=True)
+    createdAt = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updatedAt = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    user = relationship("User", back_populates="secrets")
+
+
+class Resume(Base):
+    __tablename__ = "resumes"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    userId = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    title = Column(String, nullable=False)
+    slug = Column(String, nullable=False)
+    visibility = Column(Enum(Visibility), nullable=False, default=Visibility.PRIVATE)
+    locked = Column(Boolean, nullable=False, default=False)
+    data = Column(JSON, nullable=False)
+    createdAt = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updatedAt = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # # Composite unique constraint on userId and id
+    # __table_args__ = (
+    #     {"unique": (userId, id)},
+    #     {"unique": (userId, slug)},
+    # )
+
+    # Relationships
+    user = relationship("User", back_populates="resumes")
+    statistics = relationship("Statistics", back_populates="resume", uselist=False, cascade="all, delete-orphan")
+
+
+class Statistics(Base):
+    __tablename__ = "statistics"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    resumeId = Column(UUID(as_uuid=True), ForeignKey("resumes.id", ondelete="CASCADE"), unique=True, nullable=False)
+    views = Column(Integer, nullable=False, default=0)
+    downloads = Column(Integer, nullable=False, default=0)
+    createdAt = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updatedAt = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    resume = relationship("Resume", back_populates="statistics")

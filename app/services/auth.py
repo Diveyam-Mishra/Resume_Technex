@@ -469,9 +469,6 @@ def use_two_factor_backup_code(db: Session, email: str, code: str) -> User:
 
 
 def get_auth_providers() -> List[str]:
-    """
-    Get available authentication providers.
-    """
     providers = []
     
     if not settings.DISABLE_EMAIL_AUTH:
@@ -486,15 +483,5 @@ def get_auth_providers() -> List[str]:
         settings.GOOGLE_CLIENT_SECRET and 
         settings.GOOGLE_CALLBACK_URL):
         providers.append("google")
-    
-    if (settings.OPENID_AUTHORIZATION_URL and
-        settings.OPENID_CALLBACK_URL and
-        settings.OPENID_CLIENT_ID and
-        settings.OPENID_CLIENT_SECRET and
-        settings.OPENID_ISSUER and
-        settings.OPENID_SCOPE and
-        settings.OPENID_TOKEN_URL and
-        settings.OPENID_USER_INFO_URL):
-        providers.append("openid")
     
     return providers
