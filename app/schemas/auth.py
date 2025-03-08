@@ -16,7 +16,6 @@ class RegisterRequest(BaseModel):
     email: EmailStr
     username: str
     password: str
-    locale: str = "en-US"
     class Config:
         from_attributes = True
     
@@ -80,6 +79,7 @@ class TokenResponse(BaseModel):
 
 class AuthResponse(BaseModel):
     status: str
+    token: Optional[str] = None
 
 
 class MessageResponse(BaseModel):

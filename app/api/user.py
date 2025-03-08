@@ -14,14 +14,14 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
-@router.get("/me", response_model=UserSchema)
+@router.get("/me")
 async def get_current_user(
     user: User = Depends(validate_two_factor_auth)
 ):
     """
     Get the current user.
     """
-    return UserSchema.from_orm(user)
+    return user
 
 
 @router.patch("/me", response_model=UserSchema)
@@ -46,8 +46,7 @@ async def update_current_user(
             update_data_without_email = UpdateUserRequest(
                 name=update_data.name,
                 username=update_data.username,
-                picture=update_data.picture,
-                locale=update_data.locale
+                picture=update_data.picture
             )
             
             updated_user = update_user(db, user.id, update_data_without_email)
@@ -55,7 +54,7 @@ async def update_current_user(
             # Update user without changing email
             updated_user = update_user(db, user.id, update_data)
         
-        return UserSchema.from_orm(updated_user)
+        return updated_user
     except Exception as e:
         logger.error(f"Error updating user: {e}")
         raise HTTPException(

@@ -27,7 +27,22 @@ class User(BaseModel):
     name: str
     email: EmailStr
     username: str
-    locale: str = "en-US"
+    picture: Optional[str] = None
+    provider: Literal["email", "github", "google", "openid"] = "email"
+    emailVerified: bool = False
+    twoFactorEnabled: bool = False
+    createdAt: datetime
+    updatedAt: datetime
+
+    class Config:
+        orm_mode = True
+
+
+class UserSchema(BaseModel):
+    id: uuid.UUID
+    name: str
+    email: EmailStr
+    username: str
     picture: Optional[str] = None
     provider: Literal["email", "github", "google", "openid"] = "email"
     emailVerified: bool = False
@@ -51,7 +66,6 @@ class UpdateUserRequest(BaseModel):
     email: Optional[EmailStr] = None
     username: Optional[str] = None
     picture: Optional[str] = None
-    locale: Optional[str] = None
     
     @field_validator('username')
     def username_alphanumeric(cls, v):

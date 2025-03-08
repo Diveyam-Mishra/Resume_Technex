@@ -29,7 +29,6 @@ class User(Base):
     name = Column(String, nullable=False)
     email = Column(String, unique=True, nullable=False, index=True)
     username = Column(String, unique=True, nullable=False, index=True)
-    locale = Column(String, nullable=False, default="en-US")
     picture = Column(String, nullable=True)
     provider = Column(Enum(Provider), nullable=False, default=Provider.EMAIL)
     emailVerified = Column(Boolean, nullable=False, default=False)

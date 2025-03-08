@@ -103,7 +103,8 @@ async def register(
     print(0)
     # Return user with authentication status
     return {
-        "status": "authenticated" 
+        "status": "authenticated",
+        "token": tokens["access_token"]
     }
 
 
@@ -139,14 +140,13 @@ async def login(
     # If the user has 2FA enabled, return 2FA required status
     if user.twoFactorEnabled:
         return {
-            "status": "2fa_required",
-            "user": UserSchema.from_orm(user)
+            "status": "2fa_required"
         }
     
     # Otherwise, return authenticated status
     return {
         "status": "authenticated",
-        "user": UserSchema.from_orm(user)
+        "token": tokens["access_token"]
     }
 
 
@@ -200,7 +200,7 @@ async def refresh_token(
         # Return authenticated status
         return {
             "status": "authenticated",
-            "user": UserSchema.from_orm(user)
+            "token": tokens["access_token"]
         }
     except Exception as e:
         logger.error(f"Error refreshing token: {e}")
@@ -285,18 +285,23 @@ async def reset_password_endpoint(
 # Email Verification Flows
 @router.post("/verify-email", response_model=MessageResponse)
 async def verify_email_endpoint(
-    token: str = Query(...),
+    request: Request,
+    # token: str = Query(...),
     user: User = Depends(validate_two_factor_auth),
     db: Session = Depends(get_db)
 ):
     """
     Verify email using verification token.
     """
+    print(request.cookies)
+    token = request.cookies.get("Refresh")  # Retrieve token from cookies
     if not token:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=ErrorMessage.INVALID_VERIFICATION_TOKEN
-        )
+        raise HTTPException(status_code=400, detail="Token missing")
+    # if not token:
+    #     raise HTTPException(
+    #         status_code=status.HTTP_400_BAD_REQUEST,
+    #         detail=ErrorMessage.INVALID_VERIFICATION_TOKEN
+    #     )
     
     if user.emailVerified:
         raise HTTPException(

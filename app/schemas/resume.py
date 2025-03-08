@@ -36,7 +36,6 @@ class ResumeMetadata(BaseModel):
     page: Dict[str, Any] = {}
     theme: Dict[str, Any] = {}
     typography: Dict[str, Any] = {}
-    locale: str = "en-US"
     date: Dict[str, Any] = {}
     
 

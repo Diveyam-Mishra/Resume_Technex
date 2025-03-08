@@ -41,14 +41,8 @@ async def get_schema():
     """
     Get the JSON schema for resume data structure.
     """
-    from pydantic.json_schema import schema
     from app.schemas.resume import ResumeData
-    
-    # Generate schema from ResumeData
-    resume_schema = schema([ResumeData], title="ResumeData")
-    
-    return resume_schema
-
+    return ResumeData.model_json_schema()
 
 # Create a new resume
 @router.post("", response_model=ResumeSchema, status_code=status.HTTP_201_CREATED)
@@ -62,7 +56,7 @@ async def create_new_resume(
     """
     try:
         resume = create_resume(db, user.id, create_data)
-        return ResumeSchema.from_orm(resume)
+        return resume
     except Exception as e:
         logger.error(f"Error creating resume: {e}")
         raise HTTPException(
@@ -83,7 +77,7 @@ async def import_new_resume(
     """
     try:
         resume = import_resume(db, user.id, import_data)
-        return ResumeSchema.from_orm(resume)
+        return resume
     except Exception as e:
         logger.error(f"Error importing resume: {e}")
         raise HTTPException(
@@ -102,7 +96,7 @@ async def get_user_resumes(
     Get all resumes for the current user.
     """
     resumes = get_all_resumes(db, user.id)
-    return [ResumeSchema.from_orm(resume) for resume in resumes]
+    return [resume for resume in resumes]
 
 
 # Get a specific resume by ID
@@ -117,7 +111,7 @@ async def get_resume(
     Only returns resumes owned by the current user.
     """
     resume = get_resume_by_id(db, resume_id, user.id)
-    return ResumeSchema.from_orm(resume)
+    return resume
 
 
 # Get resume statistics
@@ -149,7 +143,7 @@ async def get_public_resume(
     """
     user_id = user.id if user else None
     resume = get_resume_by_username_slug(db, username, slug, user_id)
-    return ResumeSchema.from_orm(resume)
+    return resume
 
 
 # Update a resume
@@ -165,7 +159,7 @@ async def update_user_resume(
     """
     try:
         updated_resume = update_resume(db, user.id, resume_id, update_data)
-        return ResumeSchema.from_orm(updated_resume)
+        return updated_resume
     except HTTPException:
         raise
     except Exception as e:
@@ -189,7 +183,7 @@ async def lock_user_resume(
     """
     try:
         updated_resume = lock_resume(db, user.id, resume_id, set)
-        return ResumeSchema.from_orm(updated_resume)
+        return updated_resume
     except Exception as e:
         logger.error(f"Error locking resume: {e}")
         raise HTTPException(

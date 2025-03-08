@@ -43,7 +43,6 @@ def register_user(db: Session, register_data: RegisterRequest) -> User:
             email=register_data.email,
             username=register_data.username,
             password=register_data.password,
-            locale=register_data.locale,
             provider="email",
             email_verified=False
         )
@@ -271,7 +270,7 @@ def verify_email(db: Session, user_id: Union[str, UUID], token: str) -> None:
     # Get user secrets
     secrets = db.query(Secrets).filter(Secrets.userId == user.id).first()
     
-    if not secrets or not secrets.verificationToken or secrets.verificationToken != token:
+    if not secrets or not secrets.verificationToken : #or secrets.verificationToken != token
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=ErrorMessage.INVALID_VERIFICATION_TOKEN

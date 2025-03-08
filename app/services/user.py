@@ -62,7 +62,6 @@ def create_user(
     email: str, 
     username: str, 
     password: Optional[str] = None,
-    locale: str = "en-US", 
     provider: str = "email",
     email_verified: bool = False,
     picture: Optional[str] = None
@@ -88,7 +87,6 @@ def create_user(
         name=name,
         email=email,
         username=username,
-        locale=locale,
         provider=provider,
         emailVerified=email_verified,
         picture=picture
@@ -146,8 +144,6 @@ def update_user(
         db_user.name = update_data.name
     if update_data.username:
         db_user.username = update_data.username
-    if update_data.locale:
-        db_user.locale = update_data.locale
     if update_data.picture:
         db_user.picture = update_data.picture
     

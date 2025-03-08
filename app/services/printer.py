@@ -1,78 +1,138 @@
 import logging
 import json
+import io
 from typing import Dict, List, Optional, Union
 import asyncio
-import re
-import io
+from pathlib import Path
+from jinja2 import Environment, FileSystemLoader, select_autoescape
+from reportlab.lib.pagesizes import A4, letter
+from reportlab.lib import colors
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import mm, inch
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, ListFlowable, ListItem
+from reportlab.pdfgen import canvas
+from reportlab.platypus.flowables import Flowable
 from fastapi import HTTPException, status
-import requests
-from pyppeteer import launch
-from PyPDF2 import PdfReader, PdfWriter
+from PIL import Image
 
 from app.config.settings import settings
 from app.utils.constants import ErrorMessage
 from app.schemas.resume import Resume
 from app.services.storage import storage_service
 
-
 logger = logging.getLogger(__name__)
-
 
 class PrinterService:
     """
-    Service for generating PDF and preview images of resumes.
+    Service for generating PDF and preview images of resumes using ReportLab.
+    This maintains the same interface as the original implementation.
     """
+    def __init__(self):
+        """Initialize the service with template environment."""
+        # Setup Jinja2 template environment for any HTML content rendering
+        self.template_dir = Path(__file__).parent / "../templates"
+        self.template_env = Environment(
+            loader=FileSystemLoader(self.template_dir),
+            autoescape=select_autoescape(['html', 'xml'])
+        )
+        
+        # Create templates directory if it doesn't exist
+        self.template_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Initialize styles
+        self.styles = getSampleStyleSheet()
+        self._setup_custom_styles()
+
+    def _setup_custom_styles(self):
+        """Setup custom paragraph styles for PDF generation"""
+        # Heading styles
+        self.styles.add(ParagraphStyle(
+            name='ResumeHeading',
+            parent=self.styles['Heading1'],
+            fontSize=16,
+            spaceAfter=6,
+            alignment=1  # Center alignment
+        ))
+        
+        # Section title style
+        self.styles.add(ParagraphStyle(
+            name='SectionTitle',
+            parent=self.styles['Heading2'],
+            fontSize=12,
+            spaceAfter=6,
+            borderWidth=1,
+            borderColor=colors.black,
+            borderPadding=2,
+            borderRadius=None,
+            endDots=None,
+            splitLongWords=1,
+            underlineWidth=0.5,
+            underlineGap=1,
+            underlineOffset=-2,
+            underlineColor=colors.black,
+        ))
+        
+        # Job title style
+        self.styles.add(ParagraphStyle(
+            name='JobTitle',
+            parent=self.styles['Normal'],
+            fontSize=10,
+            fontName='Helvetica-Bold',
+            spaceAfter=1
+        ))
+        
+        # Normal text style
+        self.styles.add(ParagraphStyle(
+            name='ResumeNormal',
+            parent=self.styles['Normal'],
+            fontSize=10,
+            spaceAfter=2
+        ))
+        
+        # Contact info style
+        self.styles.add(ParagraphStyle(
+            name='ContactInfo',
+            parent=self.styles['Normal'],
+            fontSize=9,
+            alignment=1  # Center alignment
+        ))
+
     async def get_browser(self):
         """
-        Get a browser instance.
+        Stub for compatibility with original interface.
         """
-        try:
-            browser_url = f"{settings.CHROME_URL}?token={settings.CHROME_TOKEN}"
-            
-            browser = await launch(
-                browserURL=browser_url,
-                ignoreHTTPSErrors=settings.CHROME_IGNORE_HTTPS_ERRORS,
-                headless=True
-            )
-            
-            return browser
-        except Exception as e:
-            logger.error(f"Error connecting to browser: {e}")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=ErrorMessage.INVALID_BROWSER_CONNECTION
-            )
+        logger.warning("get_browser() called but ReportLab doesn't use a browser")
+        return None
 
     async def get_version(self) -> str:
         """
-        Get browser version.
+        Get ReportLab version for compatibility with original interface.
         """
-        browser = await self.get_browser()
-        version = await browser.version()
-        await browser.close()
-        return version
+        import reportlab
+        return f"ReportLab {reportlab.Version}"
 
     async def print_resume(self, resume: Resume) -> str:
         """
         Generate a PDF for a resume.
-        
+
         Args:
             resume: Resume object
-            
+
         Returns:
             URL of the generated PDF
         """
         start_time = asyncio.get_event_loop().time()
-        
+
         try:
             url = await self._generate_resume(resume)
-            
+
             end_time = asyncio.get_event_loop().time()
             duration = int((end_time - start_time) * 1000)
-            
-            number_pages = len(resume.data.metadata.layout)
-            logger.debug(f"Chrome took {duration}ms to print {number_pages} page(s)")
-            
+
+            # Access dictionary with .get() method rather than attribute access
+            number_pages = len(resume.data.get('metadata', {}).get('layout', []))
+            logger.debug(f"ReportLab took {duration}ms to print {number_pages} page(s)")
+
             return url
         except Exception as e:
             logger.error(f"Error printing resume: {e}")
@@ -84,23 +144,23 @@ class PrinterService:
     async def print_preview(self, resume: Resume) -> str:
         """
         Generate a preview image for a resume.
-        
+
         Args:
             resume: Resume object
-            
+
         Returns:
             URL of the generated preview image
         """
         start_time = asyncio.get_event_loop().time()
-        
+
         try:
             url = await self._generate_preview(resume)
-            
+
             end_time = asyncio.get_event_loop().time()
             duration = int((end_time - start_time) * 1000)
-            
-            logger.debug(f"Chrome took {duration}ms to generate preview")
-            
+
+            logger.debug(f"ReportLab took {duration}ms to generate preview")
+
             return url
         except Exception as e:
             logger.error(f"Error generating preview: {e}")
@@ -109,211 +169,373 @@ class PrinterService:
                 detail=ErrorMessage.RESUME_PRINTER_ERROR
             )
 
+    def _get_page_size(self, layout):
+        """Get page size for the given layout"""
+        width = layout.get('width', 210)  # Default A4 width in mm
+        height = layout.get('height', 297)  # Default A4 height in mm
+        return (width * mm, height * mm)
+
+    def _build_header(self, resume_data):
+        """Build the header section with name and contact info"""
+        elements = []
+        
+        # Name
+        basics = resume_data.get('basics', {})
+        name = basics.get('name', '')
+        elements.append(Paragraph(name, self.styles['ResumeHeading']))
+        elements.append(Spacer(1, 2 * mm))
+        
+        # Contact info
+        contact_parts = []
+        
+        if 'email' in basics:
+            contact_parts.append(basics['email'])
+        
+        if 'phone' in basics:
+            contact_parts.append(basics['phone'])
+        
+        if 'location' in basics:
+            location = basics['location']
+            if 'city' in location and 'region' in location:
+                contact_parts.append(f"{location['city']}, {location['region']}")
+        
+        if contact_parts:
+            contact_info = " | ".join(contact_parts)
+            elements.append(Paragraph(contact_info, self.styles['ContactInfo']))
+            elements.append(Spacer(1, 6 * mm))
+        
+        return elements
+
+    def _build_work_section(self, work_items):
+        """Build work experience section"""
+        elements = []
+        
+        for job in work_items:
+            # Company and dates row
+            job_header = f"<b>{job.get('position', '')}</b> - {job.get('company', '')}"
+            date_range = f"{job.get('startDate', '')} - {job.get('endDate', 'Present')}"
+            
+            elements.append(
+                Table(
+                    [[Paragraph(job_header, self.styles['JobTitle']), 
+                      Paragraph(date_range, self.styles['ResumeNormal'])]],
+                    colWidths=['70%', '30%'],
+                    style=TableStyle([
+                        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                        ('ALIGN', (1, 0), (1, 0), 'RIGHT'),
+                    ])
+                )
+            )
+            
+            # Summary
+            if 'summary' in job and job['summary']:
+                elements.append(Paragraph(job['summary'], self.styles['ResumeNormal']))
+            
+            # Highlights
+            if 'highlights' in job and job['highlights']:
+                highlight_items = []
+                for highlight in job['highlights']:
+                    highlight_items.append(ListItem(Paragraph(highlight, self.styles['ResumeNormal'])))
+                
+                elements.append(ListFlowable(
+                    highlight_items,
+                    bulletType='bullet',
+                    start=None,
+                    bulletFontSize=8,
+                    leftIndent=10,
+                    bulletOffsetY=1
+                ))
+            
+            elements.append(Spacer(1, 3 * mm))
+        
+        return elements
+
+    def _build_education_section(self, education_items):
+        """Build education section"""
+        elements = []
+        
+        for edu in education_items:
+            # Institution and dates row
+            elements.append(
+                Table(
+                    [[Paragraph(f"<b>{edu.get('institution', '')}</b>", self.styles['JobTitle']), 
+                      Paragraph(f"{edu.get('startDate', '')} - {edu.get('endDate', 'Present')}", self.styles['ResumeNormal'])]],
+                    colWidths=['70%', '30%'],
+                    style=TableStyle([
+                        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                        ('ALIGN', (1, 0), (1, 0), 'RIGHT'),
+                    ])
+                )
+            )
+            
+            # Degree
+            if 'area' in edu and 'studyType' in edu:
+                elements.append(Paragraph(f"{edu['area']}, {edu['studyType']}", self.styles['ResumeNormal']))
+            
+            elements.append(Spacer(1, 3 * mm))
+        
+        return elements
+
+    def _build_skills_section(self, skills_items):
+        """Build skills section"""
+        elements = []
+        
+        data = []
+        row = []
+        
+        for i, skill in enumerate(skills_items):
+            # Create skill cell
+            skill_text = f"<b>{skill.get('name', '')}</b>"
+            if 'keywords' in skill and skill['keywords']:
+                skill_text += f"<br/>{', '.join(skill['keywords'])}"
+            
+            skill_cell = Paragraph(skill_text, self.styles['ResumeNormal'])
+            row.append(skill_cell)
+            
+            # Create a new row after every 2 skills or at the end
+            if (i + 1) % 2 == 0 or i == len(skills_items) - 1:
+                # If odd number of skills, add empty cell to complete row
+                if i == len(skills_items) - 1 and (i + 1) % 2 != 0:
+                    row.append('')
+                data.append(row)
+                row = []
+        
+        if data:
+            skill_table = Table(
+                data,
+                colWidths=['50%', '50%'],
+                style=TableStyle([
+                    ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                    ('LEFTPADDING', (0, 0), (-1, -1), 0),
+                    ('RIGHTPADDING', (0, 0), (-1, -1), 10),
+                ])
+            )
+            elements.append(skill_table)
+            elements.append(Spacer(1, 3 * mm))
+        
+        return elements
+
+    def _build_projects_section(self, projects_items):
+        """Build projects section"""
+        elements = []
+        
+        for project in projects_items:
+            # Project name and dates row
+            project_header = f"<b>{project.get('name', '')}</b>"
+            date_range = ""
+            if 'startDate' in project and 'endDate' in project:
+                date_range = f"{project['startDate']} - {project['endDate']}"
+            
+            elements.append(
+                Table(
+                    [[Paragraph(project_header, self.styles['JobTitle']), 
+                      Paragraph(date_range, self.styles['ResumeNormal'])]],
+                    colWidths=['70%', '30%'],
+                    style=TableStyle([
+                        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                        ('ALIGN', (1, 0), (1, 0), 'RIGHT'),
+                    ])
+                )
+            )
+            
+            # Description
+            if 'description' in project and project['description']:
+                elements.append(Paragraph(project['description'], self.styles['ResumeNormal']))
+            
+            # Highlights
+            if 'highlights' in project and project['highlights']:
+                highlight_items = []
+                for highlight in project['highlights']:
+                    highlight_items.append(ListItem(Paragraph(highlight, self.styles['ResumeNormal'])))
+                
+                elements.append(ListFlowable(
+                    highlight_items,
+                    bulletType='bullet',
+                    start=None,
+                    bulletFontSize=8,
+                    leftIndent=10,
+                    bulletOffsetY=1
+                ))
+            
+            elements.append(Spacer(1, 3 * mm))
+        
+        return elements
+
     async def _generate_resume(self, resume: Resume) -> str:
         """
-        Generate a PDF for a resume.
+        Generate a PDF for a resume using ReportLab.
         
         Args:
             resume: Resume object
-            
+
         Returns:
             URL of the generated PDF
         """
-        browser = await self.get_browser()
-        page = await browser.newPage()
+        buffer = io.BytesIO()
         
-        public_url = str(settings.PUBLIC_URL)
-        storage_url = str(settings.STORAGE_URL)
+        # Get resume data as dict
+        resume_data = resume.data if isinstance(resume.data, dict) else resume.data.dict()
+        metadata = resume_data.get('metadata', {})
+        layout = metadata.get('layout', [{'width': 210, 'height': 297}])  # Default to A4 if no layout
         
-        url = public_url
+        # Get first page size as default
+        first_page_size = self._get_page_size(layout[0])
         
-        # In development, localhost needs to be translated to host.docker.internal for Docker networking
-        if re.search(r'https?://localhost(:\d+)?', public_url) or re.search(r'https?://localhost(:\d+)?', storage_url):
-            url = re.sub(r'localhost(:\d+)?', lambda m: f"host.docker.internal{m.group(1) or ''}", url)
-            
-            await page.setRequestInterception(True)
-            
-            # Intercept requests to fix localhost URLs
-            async def intercept_request(request):
-                if request.url.startswith(storage_url):
-                    modified_url = re.sub(
-                        r'localhost(:\d+)?', 
-                        lambda m: f"host.docker.internal{m.group(1) or ''}", 
-                        request.url
-                    )
-                    await request.continue_({"url": modified_url})
-                else:
-                    await request.continue_()
-            
-            page.on('request', intercept_request)
-        
-        # Convert resume data to JSON and set it in local storage
-        resume_data_json = json.dumps(resume.data.dict())
-        
-        await page.evaluateOnNewDocument(
-            f"""
-            (data) => {{
-                window.localStorage.setItem('resume', data);
-            }}
-            """,
-            resume_data_json
+        # Create the PDF document
+        doc = SimpleDocTemplate(
+            buffer,
+            pagesize=first_page_size,
+            leftMargin=15*mm,
+            rightMargin=15*mm,
+            topMargin=15*mm,
+            bottomMargin=15*mm
         )
-        
-        # Navigate to the artboard preview
-        await page.goto(f"{url}/artboard/preview", {"waitUntil": "networkidle0"})
-        
-        number_pages = len(resume.data.metadata.layout)
-        pages_buffer = []
+
+        # Build resume content
+        elements = []
         
         # Process each page
-        for page_index in range(1, number_pages + 1):
-            # Get page element
-            page_element = await page.querySelector(f'[data-page="{page_index}"]')
+        for page_index, page_layout in enumerate(layout):
+            if page_index == 0:
+                # Add header only on first page
+                elements.extend(self._build_header(resume_data))
             
-            if not page_element:
-                logger.error(f"Page element {page_index} not found")
-                continue
+            # Process sections for this page
+            for section in resume_data.get('sections', []):
+                if section.get('page', 1) == page_index + 1:  # Pages are 1-indexed in data
+                    # Add section title
+                    elements.append(Paragraph(section.get('title', ''), self.styles['SectionTitle']))
+                    elements.append(Spacer(1, 2 * mm))
+                    
+                    # Add section content based on type
+                    if section.get('type') == 'work' and 'work' in resume_data:
+                        elements.extend(self._build_work_section(resume_data['work']))
+                        
+                    elif section.get('type') == 'education' and 'education' in resume_data:
+                        elements.extend(self._build_education_section(resume_data['education']))
+                        
+                    elif section.get('type') == 'skills' and 'skills' in resume_data:
+                        elements.extend(self._build_skills_section(resume_data['skills']))
+                        
+                    elif section.get('type') == 'projects' and 'projects' in resume_data:
+                        elements.extend(self._build_projects_section(resume_data['projects']))
+                        
+                    elif section.get('type') == 'custom' and 'content' in section:
+                        # For custom sections, we'd need to convert HTML to ReportLab elements
+                        # For simplicity, just adding as-is with some basic HTML support
+                        elements.append(Paragraph(section['content'], self.styles['ResumeNormal']))
+                        elements.append(Spacer(1, 3 * mm))
             
-            # Get element dimensions
-            width = await page.evaluate("(element) => element.scrollWidth", page_element)
-            height = await page.evaluate("(element) => element.scrollHeight", page_element)
-            
-            # Cache the original HTML
-            temporary_html = await page.evaluate(
-                """
-                (element) => {
-                    const clonedElement = element.cloneNode(true);
-                    const temporaryHtml = document.body.innerHTML;
-                    document.body.innerHTML = clonedElement.outerHTML;
-                    return temporaryHtml;
-                }
-                """,
-                page_element
-            )
-            
-            # Apply custom CSS if enabled
-            css = resume.data.metadata.css
-            
-            if css.visible:
-                await page.evaluate(
-                    """
-                    (cssValue) => {
-                        const styleTag = document.createElement('style');
-                        styleTag.textContent = cssValue;
-                        document.head.append(styleTag);
-                    }
-                    """,
-                    css.value
-                )
-            
-            # Generate PDF for this page
-            pdf_bytes = await page.pdf({
-                "width": width,
-                "height": height,
-                "printBackground": True
-            })
-            
-            pages_buffer.append(pdf_bytes)
-            
-            # Restore the original HTML
-            await page.evaluate(
-                """
-                (temporaryHtml) => {
-                    document.body.innerHTML = temporaryHtml;
-                }
-                """,
-                temporary_html
-            )
+            # Add page break after each page except the last
+            if page_index < len(layout) - 1:
+                elements.append(Flowable.PageBreak())
         
-        # Close page and browser
-        await page.close()
-        await browser.close()
+        # Build the PDF
+        doc.build(elements)
         
-        # Merge PDFs using PyPDF2
-        output_pdf = io.BytesIO()
-        pdf_writer = PdfWriter()
-        
-        for page_bytes in pages_buffer:
-            pdf_reader = PdfReader(io.BytesIO(page_bytes))
-            pdf_writer.add_page(pdf_reader.pages[0])
-        
-        pdf_writer.write(output_pdf)
-        output_pdf.seek(0)
+        # Get PDF bytes
+        buffer.seek(0)
+        pdf_bytes = buffer.getvalue()
         
         # Upload the PDF to storage
         url = storage_service.upload_object(
             user_id=resume.userId,
             type_="resumes",
-            file_data=output_pdf.getvalue(),
-            filename=resume.title
+            file_data=pdf_bytes,
+            filename=f"{resume.slug}.pdf"
         )
         
         return url
 
     async def _generate_preview(self, resume: Resume) -> str:
         """
-        Generate a preview image for a resume.
+        Generate a preview image for a resume using ReportLab and Pillow.
         
         Args:
             resume: Resume object
             
         Returns:
-            URL of the generated preview image
+            URL of the generated preview
         """
-        browser = await self.get_browser()
-        page = await browser.newPage()
+        # Generate PDF first
+        buffer = io.BytesIO()
         
-        public_url = str(settings.PUBLIC_URL)
-        storage_url = str(settings.STORAGE_URL)
+        # Get resume data as dict
+        resume_data = resume.data if isinstance(resume.data, dict) else resume.data.dict()
+        metadata = resume_data.get('metadata', {})
+        layout = metadata.get('layout', [{'width': 210, 'height': 297}])  # Default to A4 if no layout
         
-        url = public_url
+        # Get first page size
+        first_page_size = self._get_page_size(layout[0])
         
-        # In development, localhost needs to be translated to host.docker.internal for Docker networking
-        if re.search(r'https?://localhost(:\d+)?', public_url) or re.search(r'https?://localhost(:\d+)?', storage_url):
-            url = re.sub(r'localhost(:\d+)?', lambda m: f"host.docker.internal{m.group(1) or ''}", url)
-            
-            await page.setRequestInterception(True)
-            
-            # Intercept requests to fix localhost URLs
-            async def intercept_request(request):
-                if request.url.startswith(storage_url):
-                    modified_url = re.sub(
-                        r'localhost(:\d+)?', 
-                        lambda m: f"host.docker.internal{m.group(1) or ''}", 
-                        request.url
-                    )
-                    await request.continue_({"url": modified_url})
-                else:
-                    await request.continue_()
-            
-            page.on('request', intercept_request)
-        
-        # Convert resume data to JSON and set it in local storage
-        resume_data_json = json.dumps(resume.data.dict())
-        
-        await page.evaluateOnNewDocument(
-            f"""
-            (data) => {{
-                window.localStorage.setItem('resume', data);
-            }}
-            """,
-            resume_data_json
+        # Create the PDF document - first page only
+        doc = SimpleDocTemplate(
+            buffer,
+            pagesize=first_page_size,
+            leftMargin=15*mm,
+            rightMargin=15*mm,
+            topMargin=15*mm,
+            bottomMargin=15*mm
         )
+
+        # Build resume content for first page
+        elements = []
         
-        # Set viewport size to A4
-        await page.setViewport({"width": 794, "height": 1123})
+        # Add header
+        elements.extend(self._build_header(resume_data))
         
-        # Navigate to the artboard preview
-        await page.goto(f"{url}/artboard/preview", {"waitUntil": "networkidle0"})
+        # Process sections for first page only
+        for section in resume_data.get('sections', []):
+            if section.get('page', 1) == 1:  # Only first page
+                # Add section title
+                elements.append(Paragraph(section.get('title', ''), self.styles['SectionTitle']))
+                elements.append(Spacer(1, 2 * mm))
+                
+                # Add section content based on type
+                if section.get('type') == 'work' and 'work' in resume_data:
+                    elements.extend(self._build_work_section(resume_data['work']))
+                    
+                elif section.get('type') == 'education' and 'education' in resume_data:
+                    elements.extend(self._build_education_section(resume_data['education']))
+                    
+                elif section.get('type') == 'skills' and 'skills' in resume_data:
+                    elements.extend(self._build_skills_section(resume_data['skills']))
+                    
+                elif section.get('type') == 'projects' and 'projects' in resume_data:
+                    elements.extend(self._build_projects_section(resume_data['projects']))
+                    
+                elif section.get('type') == 'custom' and 'content' in section:
+                    elements.append(Paragraph(section['content'], self.styles['ResumeNormal']))
+                    elements.append(Spacer(1, 3 * mm))
         
-        # Take a screenshot
-        screenshot = await page.screenshot({"quality": 80, "type": "jpeg"})
+        # Build the PDF
+        doc.build(elements)
         
-        # Close page and browser
-        await page.close()
-        await browser.close()
+        # Get PDF bytes
+        buffer.seek(0)
+        pdf_bytes = buffer.getvalue()
         
-        # Upload the screenshot to storage
+        # Convert PDF to JPEG image using pdf2image
+        try:
+            from pdf2image import convert_from_bytes
+            
+            images = convert_from_bytes(
+                pdf_bytes, 
+                dpi=150,
+                first_page=1,
+                last_page=1
+            )
+            
+            img_byte_arr = io.BytesIO()
+            images[0].save(img_byte_arr, format='JPEG', quality=80)
+            img_byte_arr.seek(0)
+            screenshot = img_byte_arr.getvalue()
+            
+        except ImportError:
+            logger.warning("pdf2image not installed, using PDF as preview")
+            screenshot = pdf_bytes
+        
+        # Upload the preview image
         url = storage_service.upload_object(
             user_id=resume.userId,
             type_="previews",
@@ -323,6 +545,5 @@ class PrinterService:
         
         return url
 
-
-# Singleton instance
+# Singleton instance with the same name as in the original code
 printer_service = PrinterService()
